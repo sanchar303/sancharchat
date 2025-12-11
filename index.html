@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Public Chat Room</title>
+<link rel="icon" href="favicon.png" type="image/png">
+
+<style>
+:root {
+  --bg-dark: radial-gradient(circle at top, #10121a, #0a0c10 70%);
+  --bg-light: linear-gradient(to bottom right, #ffffff, #fcfcfc);
+  --text-dark: #fff;
+  --text-light: #111;
+  --bubble-bg-dark: rgba(255,255,255,0.08);
+  --bubble-bg-light: rgba(255,255,255,0.8);
+  --bubble-self-dark: linear-gradient(90deg, #6576ff55, #9a6cff55);
+  --bubble-self-light: linear-gradient(90deg, #e0e0e0, #f8f8f8);
+  --input-bg-dark: rgba(255,255,255,0.08);
+  --input-bg-light: rgba(255,255,255,0.9);
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body { height:100%; font-family:"Segoe UI", sans-serif; overflow:hidden; }
+
+body { background: var(--bg-dark); color: var(--text-dark); transition: all 0.3s ease; }
+body.light { background: var(--bg-light); color: var(--text-light); }
+
+#bg { position: fixed; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+
+#chat-container {
+  position: relative; z-index: 2;
+  width: 100%; max-width: 900px; height: 88vh;
+  margin: auto; padding: 25px;
+  border-radius: 18px;
+  background: rgba(255,255,255,0.05);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 0 25px rgba(0,0,0,0.4), inset 0 0 20px rgba(255,255,255,0.05);
+  display: flex; flex-direction: column;
+  border: 1px solid rgba(255,255,255,0.1);
+  overflow: hidden; transition: all 0.3s ease;
+}
+body.light #chat-container {
+  background: rgba(255,255,255,0.95);
+  border-color: rgba(0,0,0,0.1);
+  box-shadow: 0 0 25px rgba(0,0,0,0.2), inset 0 0 20px rgba(255,255,255,0.05);
+}
+
+#header { text-align:center; margin-bottom:15px; }
+#header h1 {
+  font-size:2.6rem;
+  background: linear-gradient(90deg, #7aa8ff, #c77bff);
+  -webkit-background-clip: text; color: transparent;
+  text-shadow: 0 0 15px rgba(100,150,255,0.5);
+}
+#header small { font-size:0.85rem; opacity:0.6; }
+
+#modeToggle {
+  position: absolute; top: 20px; right: 25px;
+  width: 44px; height: 44px; border-radius: 12px;
+  border: none; cursor: pointer;
+  background: rgba(255,255,255,0.15);
+  backdrop-filter: blur(8px);
+  transition: 0.25s; box-shadow: 0 0 10px rgba(0,0,0,0.4);
+  font-size:1.3rem; color:#fff;
+}
+
+#messages { flex:1; overflow-y:auto; width:100%; max-width:100%; padding-right:6px; }
+.loading { text-align:center; opacity:0.5; margin-top:25px; }
+
+.bubble {
+  width:100%; max-width:100%; padding:14px 18px;
+  background: var(--bubble-bg-dark);
+  border-radius: 14px; margin:10px 0;
+  backdrop-filter: blur(6px);
+  box-shadow: 0 0 10px rgba(120,170,255,0.1);
+  animation: fadeIn 0.25s ease;
+  position:relative;
+  color: inherit;
+}
+body.light .bubble { background: var(--bubble-bg-light); }
+
+.bubble.self { background: var(--bubble-self-dark); }
+body.light .bubble.self { background: var(--bubble-self-light); }
+
+.meta { font-size:0.78rem; opacity:0.7; margin-bottom:4px; }
+.msg { font-size:1rem; line-height:1.4em; word-wrap:break-word; white-space: pre-wrap; }
+
+.desc {
+    font-size: 0.75rem;
+    color: #ffcc00;
+    font-style: italic;
+    margin-top: 4px;
+    display: inline-block;
+    text-shadow: 0 0 3px rgba(0,0,0,0.5);
+}
+body.light .desc {
+    color: #cc6600;
+    text-shadow: 0 0 2px rgba(255,255,255,0.5);
+}
+
+#inputBar { display:flex; gap:10px; margin-top:12px; }
+input {
+  flex:1; padding:12px 15px;
+  background: var(--input-bg-dark);
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius:10px; color: inherit; font-size:1rem;
+  backdrop-filter: blur(6px); transition:0.25s;
+}
+body.light input { background: var(--input-bg-light); border-color: rgba(0,0,0,0.2); color: var(--text-light); }
+input:focus { border-color:#7aa8ff; box-shadow:0 0 10px rgba(120,160,255,0.6); outline:none; }
+
+button#sendBtn {
+  flex:0 0 110px; padding:12px; border-radius:10px;
+  background: linear-gradient(90deg, #6d83ff, #b47bff);
+  border:none; cursor:pointer; color:#fff; font-size:1rem;
+  transition:0.25s; box-shadow:0 0 15px rgba(130,120,255,0.4);
+}
+button#sendBtn:hover { transform: scale(1.1); box-shadow: 0 0 25px rgba(130,140,255,0.7), 0 0 45px rgba(180,120,255,0.3); }
+button#sendBtn:active { transform: scale(0.95); }
+
+@keyframes fadeIn { from { opacity:0; transform: translateY(4px); } to { opacity:1; transform: translateY(0); } }
+
+#olderVersionBtnContainer {
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    text-align: center;
+    z-index: 999;
+    font-family: "Segoe UI", sans-serif;
+}
+#olderVersionBtn {
+    display: inline-block; padding:6px 10px; background: linear-gradient(to bottom, #c0c0c0 0%, #808080 100%);
+    color: #000; font-size:0.75rem; font-weight: normal;
+    border:2px solid #fff; border-bottom:2px solid #404040; border-right:2px solid #404040;
+    border-radius:3px; text-decoration:none;
+    box-shadow: inset -1px -1px 0 #fff, inset 1px 1px 0 #404040;
+    transition: all 0.1s ease;
+}
+#olderVersionBtn:active {
+    border-top:2px solid #404040; border-left:2px solid #404040;
+    border-bottom:2px solid #fff; border-right:2px solid #fff;
+    box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 #404040;
+}
+#olderVersionNote { margin-top:4px; font-size:0.7rem; color:#fff; }
+body.light #olderVersionNote { color:#000; }
+</style>
+</head>
+<body>
+
+<canvas id="bg"></canvas>
+
+<button id="modeToggle">☀️</button>
+
+<div id="chat-container">
+    <div id="header">
+        <h1>Public Chat Room</h1>
+        <small>© 2025 Sanchar Koirala</small>
+    </div>
+
+    <div id="messages">
+        <div class="loading">Fetching messages from the database. . .</div>
+    </div>
+
+    <div id="inputBar">
+        <input type="text" id="name" placeholder="username (required)">
+        <input type="text" id="message" placeholder="Type a message...">
+        <button id="sendBtn">Send</button>
+    </div>
+</div>
+
+<div id="olderVersionBtnContainer">
+    <a href="index1.html" target="_blank" id="olderVersionBtn">Try older version</a>
+    <div id="olderVersionNote">Password is 'koirala'</div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js";
+import { getDatabase, ref, push, onValue } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js";
+
+const firebaseConfig = {
+    apiKey: "AIzaSyAJBCkrqX2SvE10Rjc3GRO57_aH5AKmjN4",
+    authDomain: "sancharchat.firebaseapp.com",
+    databaseURL: "https://sancharchat-default-rtdb.firebaseio.com",
+    projectId: "sancharchat",
+    storageBucket: "sancharchat.firebasestorage.app",
+    messagingSenderId: "23453772006",
+    appId: "1:23453772006:web:d3766e2b110d165d39b327",
+    measurementId: "G-8QM9DQFK26"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+const messagesRef = ref(db, "messages");
+
+const msgs = document.getElementById("messages");
+const nameInput = document.getElementById("name");
+const msgInput = document.getElementById("message");
+const sendBtn = document.getElementById("sendBtn");
+
+let myName = "";
+let seenTimestamps = new Set();
+
+onValue(messagesRef, snapshot => {
+    msgs.innerHTML = "";
+    if (!snapshot.exists()) { 
+        msgs.innerHTML = '<div class="loading">No messages yet…</div>'; 
+        seenTimestamps.clear();
+        return; 
+    }
+
+    let messagesArray = [];
+
+    snapshot.forEach(userSnap => {
+        const val = userSnap.val();
+        if(val.name && val.text){
+            messagesArray.push(val);
+        } else {
+            userSnap.forEach(msgSnap => messagesArray.push(msgSnap.val()));
+        }
+    });
+
+    messagesArray.sort((a,b) => (a.timestamp||0) - (b.timestamp||0));
+
+    messagesArray.forEach(d => {
+        let time = "??:??";
+        if(d.timestamp){
+            let ts = parseInt(d.timestamp);
+            if(!isNaN(ts) && ts>0) time = new Date(ts).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
+            seenTimestamps.add(ts);
+        }
+
+        let div = document.createElement("div");
+        div.className = "bubble";
+        if(d.name === myName) div.classList.add("self");
+
+        // Message + optional desc
+        let html = `<div class="meta">${time} — ${d.name}</div>`;
+        html += `<div class="msg">${d.text}</div>`;
+        if(d.desc && d.desc.trim() !== ""){
+            html += `<div class="desc">${d.desc}</div>`;
+        }
+
+        div.innerHTML = html;
+        msgs.appendChild(div);
+    });
+
+    msgs.scrollTop = msgs.scrollHeight;
+});
+
+function sendMessage() {
+    let name = nameInput.value.trim();
+    let text = msgInput.value.trim();
+    if(!name) return alert("Name required!");
+    if(!text) return;
+    myName = name;
+    push(messagesRef, {name, text, timestamp: Date.now()});
+    msgInput.value = "";
+}
+
+sendBtn.onclick = sendMessage;
+msgInput.addEventListener("keyup", e => { if(e.key === "Enter") sendMessage(); });
+
+const toggle = document.getElementById("modeToggle");
+toggle.onclick = () => {
+    document.body.classList.toggle("light");
+    toggle.textContent = document.body.classList.contains("light") ? "🌙" : "☀️";
+};
+
+const canvas = document.getElementById("bg");
+const ctx = canvas.getContext("2d");
+canvas.width = innerWidth; canvas.height = innerHeight;
+window.addEventListener("resize", () => { canvas.width = innerWidth; canvas.height = innerHeight; });
+
+let particles = [];
+class Particle{
+    constructor(){
+        this.x = Math.random()*canvas.width;
+        this.y = Math.random()*canvas.height;
+        this.size = Math.random()*3+0.5;
+        this.speedX = (Math.random()-0.5)*0.6;
+        this.speedY = (Math.random()-0.5)*0.6;
+        this.color = `hsl(${Math.random()*360}, 80%, ${document.body.classList.contains('light')?40:60}%)`;
+    }
+    update(){ this.x+=this.speedX; this.y+=this.speedY; if(this.x<0||this.x>canvas.width) this.speedX*=-1; if(this.y<0||this.y>canvas.height) this.speedY*=-1; }
+    draw(){ ctx.fillStyle=this.color; ctx.beginPath(); ctx.arc(this.x,this.y,this.size,0,Math.PI*2); ctx.fill(); }
+}
+
+function initParticles(){ particles=[]; for(let i=0;i<80;i++) particles.push(new Particle()); }
+function animate(){ ctx.fillStyle = document.body.classList.contains('light') ? "rgba(255,255,255,0.25)" : "rgba(16,18,26,0.25)"; ctx.fillRect(0,0,canvas.width,canvas.height); particles.forEach(p=>{p.update();p.draw();}); requestAnimationFrame(animate); }
+
+initParticles(); animate();
+</script>
+</body>
+</html>
