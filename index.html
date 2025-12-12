@@ -122,7 +122,6 @@ input {
 body.light input { background: var(--input-bg-light); border-color: rgba(0,0,0,0.2); color: var(--text-light); }
 input:focus { border-color:#7aa8ff; box-shadow:0 0 10px rgba(120,160,255,0.6); outline:none; }
 
-/* Locked name input glow + pulse + cursor hidden */
 input.locked {
     cursor: none !important;
     pointer-events: none;
@@ -184,7 +183,6 @@ body.light #olderVersionNote { color:#000; }
     <div id="messages">
         <div class="loading">Fetching messages from the database . . .</div>
     </div>
-
     <div id="inputBar">
         <input type="text" id="name" placeholder="username (required)">
         <input type="text" id="message" placeholder="Type a message...">
@@ -193,7 +191,7 @@ body.light #olderVersionNote { color:#000; }
 </div>
 
 <div id="olderVersionBtnContainer">
-    <a href='index1.html' id='olderVersionBtn' target='_blank'>Try older version</a>
+    <a href='/index1' id='olderVersionBtn' target='_blank'>Try older version</a>
     <div id="olderVersionNote">Contact admin for password</div>
 </div>
 
@@ -223,6 +221,15 @@ const sendBtn = document.getElementById("sendBtn");
 
 let myName = "";
 
+// ------- NEW: username → color -------
+function nameColor(name) {
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) {
+        hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return `hsl(${hash % 360}, 70%, 70%)`;
+}
+
 // ---------------- Retrieve messages ----------------
 onValue(messagesRef, snapshot => {
     msgs.innerHTML = "";
@@ -240,11 +247,18 @@ onValue(messagesRef, snapshot => {
 
     messagesArray.forEach(d=>{
         const time = new Date(d.timestamp).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
+        const col = nameColor(d.name);
+
         const div=document.createElement("div");
         div.className="bubble";
         if(d.name===myName) div.classList.add("self");
-        let html=`<div class="meta">${time} — ${d.name}</div><div class="msg">${d.text}</div>`;
+
+        let html =
+        `<div class="meta">${time} — <span style="color:${col}; font-weight:bold">${d.name}</span></div>
+         <div class="msg">${d.text}</div>`;
+
         if(d.desc && d.desc.trim()!=="") html+=`<div class="desc">${d.desc}</div>`;
+
         div.innerHTML=html;
         msgs.appendChild(div);
     });
@@ -265,7 +279,7 @@ function sendMessage(){
     msgInput.focus();
 }
 
-// ---------------- Name lock + highlight + auto focus message + glow ----------------
+// ---------------- Name lock ----------------
 function setName() {
     if (nameInput.value.trim() === "") return;
     myName = nameInput.value.trim().toLowerCase();
@@ -273,33 +287,28 @@ function setName() {
     nameInput.readOnly = true;
     nameInput.classList.add("locked");
 
-    // Highlight all existing messages from this user
     document.querySelectorAll("#messages .bubble").forEach(b => {
         const meta = b.querySelector(".meta");
         if (meta && meta.textContent.includes(`— ${myName}`)) b.classList.add("self");
     });
 
-    // Focus message input automatically
     msgInput.focus();
 }
 
-// On Enter key
 nameInput.addEventListener("keyup", e => { if (e.key === "Enter") setName(); });
-// On blur (mobile "Next" triggers blur)
 nameInput.addEventListener("blur", setName);
 
-// ---------------- Send on Enter ----------------
 msgInput.addEventListener("keyup", e=>{ if(e.key==="Enter") sendMessage(); });
 sendBtn.onclick = sendMessage;
 
-// ---------------- Light/Dark mode ----------------
+// ---------------- Light/Dark ----------------
 const toggle=document.getElementById("modeToggle");
 toggle.onclick = ()=>{
     document.body.classList.toggle("light");
     toggle.textContent = document.body.classList.contains("light")?"🌙":"☀️";
 };
 
-// ---------------- Particle background ----------------
+// ---------------- Particles ----------------
 const canvas=document.getElementById("bg");
 const ctx=canvas.getContext("2d");
 canvas.width=innerWidth; canvas.height=innerHeight;
@@ -321,10 +330,9 @@ function initParticles(){ particles=[]; for(let i=0;i<80;i++) particles.push(new
 function animate(){ ctx.fillStyle=document.body.classList.contains('light')?"rgba(255,255,255,0.25)":"rgba(16,18,26,0.25)"; ctx.fillRect(0,0,canvas.width,canvas.height); particles.forEach(p=>{p.update();p.draw();}); requestAnimationFrame(animate);}
 initParticles(); animate();
 </script>
+<a href="https://app.netlify.com/">Netlify</a><br>
+<a href="https://www.google.com/">Google</a><br>
+<a href="https://www.google.com/search?q=public+chat+room&oq=public+chat+room">Public Chat Room</a><br>
+<a href="https://moviesjoy.is/home">MoviesJoy</a>
 </body>
 </html>
-
-
-
-
-
