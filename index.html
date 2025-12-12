@@ -142,7 +142,6 @@ button#sendBtn {
   border:none; cursor:pointer; color:#fff; font-size:1rem;
   transition:0.25s; box-shadow:0 0 15px rgba(130,120,255,0.4);
 }
-button#sendBtn:disabled { opacity:0.5; cursor:not-allowed; }
 button#sendBtn:hover { transform: scale(1.1); box-shadow: 0 0 25px rgba(130,140,255,0.7), 0 0 45px rgba(180,120,255,0.3); }
 button#sendBtn:active { transform: scale(0.95); }
 
@@ -187,7 +186,7 @@ body.light #olderVersionNote { color:#000; }
     <div id="inputBar">
         <input type="text" id="name" placeholder="username (required)">
         <input type="text" id="message" placeholder="Type a message...">
-        <button id="sendBtn" disabled>❯❯❯❯</button>
+        <button id="sendBtn">❯❯❯❯</button>
     </div>
 </div>
 
@@ -214,6 +213,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 const messagesRef = ref(db, "messages");
+const usernamesRef = ref(db, "usernames");
 
 const msgs = document.getElementById("messages");
 const nameInput = document.getElementById("name");
@@ -222,72 +222,34 @@ const sendBtn = document.getElementById("sendBtn");
 
 let myName = "";
 
-// ---------------- VALIDATION ----------------
-function validateUsername(name) {
-    return name && !name.includes(" ") && !/[<>]/.test(name);
+// ---------------- Input Restrictions ----------------
+function preventInvalidChars(e) {
+    if (e.key === "<" || e.key === ">" || (this.id==="name" && e.key===" ")) {
+        e.preventDefault();
+    }
 }
-function validateMessage(text) {
-    return text && !/[<>]/.test(text);
+function preventPasteInvalid(e) {
+    let pasted = (e.clipboardData || window.clipboardData).getData('text');
+    if (/[<>]/.test(pasted) || (this.id==="name" && /\s/.test(pasted))) {
+        e.preventDefault();
+    }
 }
-
-// ---------------- DISABLE SEND IF NO USERNAME ----------------
-function updateSendButton() {
-    sendBtn.disabled = !myName || !msgInput.value.trim();
-}
-
-// ---------------- RESTRICT INPUTS ----------------
-nameInput.addEventListener("keydown", e => {
-    if (e.key === " " || e.key === "<" || e.key === ">") e.preventDefault();
-});
-msgInput.addEventListener("keydown", e => {
-    if (e.key === "<" || e.key === ">") e.preventDefault();
+[nameInput, msgInput].forEach(input=>{
+    input.addEventListener("keypress", preventInvalidChars);
+    input.addEventListener("paste", preventPasteInvalid);
 });
 
-// ---------------- SET USERNAME ----------------
-function setName() {
-    const name = nameInput.value.trim();
-    if (!validateUsername(name)) return;
-    myName = name;
-    nameInput.value = myName;
-    nameInput.readOnly = true;
-    nameInput.classList.add("locked");
-    updateSendButton();
-    msgInput.focus();
-}
-
-nameInput.addEventListener("keyup", e => { if (e.key === "Enter") setName(); });
-nameInput.addEventListener("blur", setName);
-
-// ---------------- SEND MESSAGE ----------------
-function sendMessage() {
-    const text = msgInput.value.trim();
-    if (!text || !myName || !validateMessage(text)) return;
-
-    const timestamp = Date.now();
-    const newMsgRef = push(messagesRef);
-    set(newMsgRef, { name: myName, text, timestamp });
-    set(ref(db, `usernames/${myName}/${newMsgRef.key}`), { text, timestamp });
-
-    msgInput.value = "";
-    updateSendButton();
-    msgInput.focus();
-}
-
-msgInput.addEventListener("input", updateSendButton);
-msgInput.addEventListener("keyup", e => { if(e.key==="Enter") sendMessage(); });
-sendBtn.onclick = sendMessage;
-
-// ---------------- RETRIEVE MESSAGES ----------------
+// ---------------- Retrieve messages ----------------
 onValue(messagesRef, snapshot => {
     msgs.innerHTML = "";
     if(!snapshot.exists()) { msgs.innerHTML='<div class="loading">No messages yet…</div>'; return; }
 
-    const messagesArray = [];
-    snapshot.forEach(child => {
+    const messagesArray=[];
+    snapshot.forEach(child=>{
         const val = child.val();
         if(!val) return;
         const ts = val.timestamp ? parseInt(val.timestamp) : Date.now();
-        messagesArray.push({ name: val.name||"unknown", text: val.text||"", timestamp: ts, desc: val.desc||"" });
+        messagesArray.push({name: val.name||"unknown", text: val.text||"", timestamp: ts, desc: val.desc||""});
     });
 
     messagesArray.sort((a,b)=> a.timestamp-b.timestamp);
@@ -296,34 +258,73 @@ onValue(messagesRef, snapshot => {
         const time = new Date(d.timestamp).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
         const col = nameColor(d.name);
 
-        const div = document.createElement("div");
-        div.className = "bubble";
+        const div=document.createElement("div");
+        div.className="bubble";
         if(d.name===myName) div.classList.add("self");
 
-        let html = `<div class="meta">${time} — <span style="color:${col}; font-weight:bold">${d.name}</span></div>
-                    <div class="msg">${d.text}</div>`;
-        if(d.desc && d.desc.trim()!=="") html += `<div class="desc">${d.desc}</div>`;
-        div.innerHTML = html;
+        let html =
+        `<div class="meta">${time} — <span style="color:${col}; font-weight:bold">${d.name}</span></div>
+         <div class="msg">${d.text}</div>`;
+
+        if(d.desc && d.desc.trim()!=="") html+=`<div class="desc">${d.desc}</div>`;
+
+        div.innerHTML=html;
         msgs.appendChild(div);
     });
     msgs.scrollTop = msgs.scrollHeight;
 });
 
-// ---------------- NAME COLOR ----------------
+// ------- username → color -------
 function nameColor(name) {
     let hash = 0;
-    for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    for (let i = 0; i < name.length; i++) {
+        hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    }
     return `hsl(${hash % 360}, 70%, 70%)`;
 }
 
-// ---------------- LIGHT/DARK ----------------
+// ---------------- Send message ----------------
+function sendMessage(){
+    if(!myName || !msgInput.value.trim()) return;
+
+    const text = msgInput.value.trim();
+    const timestamp = Date.now();
+    const msgRef = push(messagesRef);
+    set(msgRef, { name: myName, text, timestamp });
+
+    const userMsgRef = push(ref(db, "usernames/"+myName));
+    set(userMsgRef, { text, timestamp });
+
+    msgInput.value="";
+    msgInput.focus();
+}
+
+// ---------------- Name lock ----------------
+function setName() {
+    const name = nameInput.value.trim().toLowerCase();
+    if(!name) return;
+
+    myName = name;
+    nameInput.value = myName;
+    nameInput.readOnly = true;
+    nameInput.classList.add("locked");
+    msgInput.focus();
+}
+
+nameInput.addEventListener("keyup", e => { if (e.key === "Enter") setName(); });
+nameInput.addEventListener("blur", setName);
+
+msgInput.addEventListener("keyup", e=>{ if(e.key==="Enter") sendMessage(); });
+sendBtn.onclick = sendMessage;
+
+// ---------------- Light/Dark ----------------
 const toggle=document.getElementById("modeToggle");
 toggle.onclick = ()=>{
     document.body.classList.toggle("light");
     toggle.textContent = document.body.classList.contains("light")?"🌙":"☀️";
 };
 
-// ---------------- PARTICLES ----------------
+// ---------------- Particles ----------------
 const canvas=document.getElementById("bg");
 const ctx=canvas.getContext("2d");
 canvas.width=innerWidth; canvas.height=innerHeight;
