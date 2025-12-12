@@ -184,8 +184,8 @@ body.light #olderVersionNote { color:#000; }
         <div class="loading">Fetching messages from the database . . .</div>
     </div>
     <div id="inputBar">
-        <input type="text" id="name" placeholder="username (required)">
-        <input type="text" id="message" placeholder="Type a message...">
+        <input type="text" id="name" placeholder="username (required)" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+        <input type="text" id="message" placeholder="Type a message..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
         <button id="sendBtn">❯❯❯❯</button>
     </div>
 </div>
@@ -197,7 +197,7 @@ body.light #olderVersionNote { color:#000; }
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js";
-import { getDatabase, ref, push, set, onValue } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js";
+import { getDatabase, ref, push, onValue } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js";
 
 const firebaseConfig = {
     apiKey: "AIzaSyAJBCkrqX2SvE10Rjc3GRO57_aH5AKmjN4",
@@ -213,7 +213,6 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 const messagesRef = ref(db, "messages");
-const usernamesRef = ref(db, "usernames");
 
 const msgs = document.getElementById("messages");
 const nameInput = document.getElementById("name");
@@ -222,21 +221,21 @@ const sendBtn = document.getElementById("sendBtn");
 
 let myName = "";
 
-// ---------------- Input Restrictions ----------------
-function preventInvalidChars(e) {
-    if (e.key === "<" || e.key === ">" || (this.id==="name" && e.key===" ")) {
-        e.preventDefault();
-    }
+// ---------------- Validation / Sanitization ----------------
+function sanitizeInput(input) {
+    if(input.id === "name") input.value = input.value.replace(/[<> ]/g,"");
+    else input.value = input.value.replace(/[<>]/g,"");
 }
-function preventPasteInvalid(e) {
-    let pasted = (e.clipboardData || window.clipboardData).getData('text');
-    if (/[<>]/.test(pasted) || (this.id==="name" && /\s/.test(pasted))) {
-        e.preventDefault();
-    }
-}
+
 [nameInput, msgInput].forEach(input=>{
-    input.addEventListener("keypress", preventInvalidChars);
-    input.addEventListener("paste", preventPasteInvalid);
+    input.addEventListener("keypress", e => {
+        if(e.key === "<" || e.key === ">" || (input.id==="name" && e.key===" ")) e.preventDefault();
+    });
+    input.addEventListener("paste", e => {
+        let pasted = (e.clipboardData || window.clipboardData).getData('text');
+        if(/[<>]/.test(pasted) || (input.id==="name" && /\s/.test(pasted))) e.preventDefault();
+    });
+    input.addEventListener("input", () => sanitizeInput(input));
 });
 
 // ---------------- Retrieve messages ----------------
@@ -274,7 +273,7 @@ onValue(messagesRef, snapshot => {
     msgs.scrollTop = msgs.scrollHeight;
 });
 
-// ------- username → color -------
+// ------- Username → color -------
 function nameColor(name) {
     let hash = 0;
     for (let i = 0; i < name.length; i++) {
@@ -285,15 +284,15 @@ function nameColor(name) {
 
 // ---------------- Send message ----------------
 function sendMessage(){
-    if(!myName || !msgInput.value.trim()) return;
+    let name = nameInput.value.trim().toLowerCase();
+    let text = msgInput.value.trim();
 
-    const text = msgInput.value.trim();
+    if(!name) return; // do nothing if username is empty
+    if(!text) return; // do nothing if message empty
+
+    myName = name;
     const timestamp = Date.now();
-    const msgRef = push(messagesRef);
-    set(msgRef, { name: myName, text, timestamp });
-
-    const userMsgRef = push(ref(db, "usernames/"+myName));
-    set(userMsgRef, { text, timestamp });
+    push(messagesRef, { name, text, timestamp });
 
     msgInput.value="";
     msgInput.focus();
@@ -301,7 +300,7 @@ function sendMessage(){
 
 // ---------------- Name lock ----------------
 function setName() {
-    const name = nameInput.value.trim().toLowerCase();
+    let name = nameInput.value.trim().toLowerCase();
     if(!name) return;
 
     myName = name;
