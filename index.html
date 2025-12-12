@@ -184,9 +184,9 @@ body.light #olderVersionNote { color:#000; }
         <div class="loading">Fetching messages from the database . . .</div>
     </div>
     <div id="inputBar">
-        <input type="text" id="name" placeholder="username (required)" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
-        <input type="text" id="message" placeholder="Type a message..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
-        <button id="sendBtn">❯❯❯❯</button>
+        <input type="text" id="name" placeholder="username (required)" autocomplete="off">
+        <input type="text" id="message" placeholder="Type a message..." autocomplete="off">
+        <button id="sendBtn" disabled>❯❯❯❯</button>
     </div>
 </div>
 
@@ -197,7 +197,7 @@ body.light #olderVersionNote { color:#000; }
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js";
-import { getDatabase, ref, push, onValue } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js";
+import { getDatabase, ref, push, set, onValue } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js";
 
 const firebaseConfig = {
     apiKey: "AIzaSyAJBCkrqX2SvE10Rjc3GRO57_aH5AKmjN4",
@@ -213,6 +213,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 const messagesRef = ref(db, "messages");
+const usernamesRef = ref(db, "usernames");
 
 const msgs = document.getElementById("messages");
 const nameInput = document.getElementById("name");
@@ -221,24 +222,91 @@ const sendBtn = document.getElementById("sendBtn");
 
 let myName = "";
 
-// ---------------- Validation / Sanitization ----------------
-function sanitizeInput(input) {
-    if(input.id === "name") input.value = input.value.replace(/[<> ]/g,"");
-    else input.value = input.value.replace(/[<>]/g,"");
+// ---------------- Validation ----------------
+function sanitize(text) {
+    return text.replace(/[<>]/g, "");
 }
 
-[nameInput, msgInput].forEach(input=>{
-    input.addEventListener("keypress", e => {
-        if(e.key === "<" || e.key === ">" || (input.id==="name" && e.key===" ")) e.preventDefault();
-    });
-    input.addEventListener("paste", e => {
-        let pasted = (e.clipboardData || window.clipboardData).getData('text');
-        if(/[<>]/.test(pasted) || (input.id==="name" && /\s/.test(pasted))) e.preventDefault();
-    });
-    input.addEventListener("input", () => sanitizeInput(input));
-});
+function validateUsername(name) {
+    return name && !name.includes(" ") && !/[<>]/.test(name);
+}
 
-// ---------------- Retrieve messages ----------------
+function validateMessage(text) {
+    return text && !/[<>]/.test(text);
+}
+
+// ---------------- Username Input Handling ----------------
+function setName() {
+    let name = sanitize(nameInput.value.trim().toLowerCase());
+    if (!validateUsername(name)) return;
+
+    myName = name;
+    nameInput.value = myName;
+    nameInput.readOnly = true;
+    nameInput.classList.add("locked");
+
+    updateSendBtn();
+    msgInput.focus();
+}
+
+function blockInvalidUsernameKeys(e) {
+    if (e.key === " " || e.key === "<" || e.key === ">") e.preventDefault();
+}
+
+function sanitizeUsernamePaste(e) {
+    e.preventDefault();
+    let text = (e.clipboardData || window.clipboardData).getData('text');
+    text = text.replace(/ /g,"").replace(/[<>]/g,"");
+    document.execCommand("insertText", false, text);
+}
+
+nameInput.addEventListener("keydown", blockInvalidUsernameKeys);
+nameInput.addEventListener("paste", sanitizeUsernamePaste);
+nameInput.addEventListener("keyup", e => { if(e.key==="Enter") setName(); });
+nameInput.addEventListener("blur", setName);
+
+// ---------------- Message Input Handling ----------------
+function blockInvalidMessageKeys(e) {
+    if (e.key === "<" || e.key === ">") e.preventDefault();
+}
+
+function sanitizeMessagePaste(e) {
+    e.preventDefault();
+    let text = (e.clipboardData || window.clipboardData).getData('text');
+    text = text.replace(/[<>]/g,"");
+    document.execCommand("insertText", false, text);
+}
+
+msgInput.addEventListener("keydown", blockInvalidMessageKeys);
+msgInput.addEventListener("paste", sanitizeMessagePaste);
+msgInput.addEventListener("keyup", e=>{ if(e.key==="Enter") sendMessage(); });
+
+// ---------------- Send Message ----------------
+function updateSendBtn() {
+    sendBtn.disabled = !validateUsername(myName);
+}
+
+function sendMessage(){
+    let name = myName;
+    let text = sanitize(msgInput.value.trim());
+
+    if(!validateUsername(name) || !validateMessage(text)) return;
+
+    const timestamp = Date.now();
+
+    // Store in messages
+    push(messagesRef, { name, text, timestamp });
+
+    // Store under usernames
+    push(ref(db, "usernames/" + name), { text, timestamp });
+
+    msgInput.value="";
+    msgInput.focus();
+}
+
+sendBtn.onclick = sendMessage;
+
+// ---------------- Retrieve Messages ----------------
 onValue(messagesRef, snapshot => {
     msgs.innerHTML = "";
     if(!snapshot.exists()) { msgs.innerHTML='<div class="loading">No messages yet…</div>'; return; }
@@ -248,7 +316,7 @@ onValue(messagesRef, snapshot => {
         const val = child.val();
         if(!val) return;
         const ts = val.timestamp ? parseInt(val.timestamp) : Date.now();
-        messagesArray.push({name: val.name||"unknown", text: val.text||"", timestamp: ts, desc: val.desc||""});
+        messagesArray.push({name: val.name||"unknown", text: val.text||"", timestamp: ts});
     });
 
     messagesArray.sort((a,b)=> a.timestamp-b.timestamp);
@@ -265,56 +333,18 @@ onValue(messagesRef, snapshot => {
         `<div class="meta">${time} — <span style="color:${col}; font-weight:bold">${d.name}</span></div>
          <div class="msg">${d.text}</div>`;
 
-        if(d.desc && d.desc.trim()!=="") html+=`<div class="desc">${d.desc}</div>`;
-
         div.innerHTML=html;
         msgs.appendChild(div);
     });
     msgs.scrollTop = msgs.scrollHeight;
 });
 
-// ------- Username → color -------
+// ---------------- Username color ----------------
 function nameColor(name) {
     let hash = 0;
-    for (let i = 0; i < name.length; i++) {
-        hash = name.charCodeAt(i) + ((hash << 5) - hash);
-    }
+    for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
     return `hsl(${hash % 360}, 70%, 70%)`;
 }
-
-// ---------------- Send message ----------------
-function sendMessage(){
-    let name = nameInput.value.trim().toLowerCase();
-    let text = msgInput.value.trim();
-
-    if(!name) return; // do nothing if username is empty
-    if(!text) return; // do nothing if message empty
-
-    myName = name;
-    const timestamp = Date.now();
-    push(messagesRef, { name, text, timestamp });
-
-    msgInput.value="";
-    msgInput.focus();
-}
-
-// ---------------- Name lock ----------------
-function setName() {
-    let name = nameInput.value.trim().toLowerCase();
-    if(!name) return;
-
-    myName = name;
-    nameInput.value = myName;
-    nameInput.readOnly = true;
-    nameInput.classList.add("locked");
-    msgInput.focus();
-}
-
-nameInput.addEventListener("keyup", e => { if (e.key === "Enter") setName(); });
-nameInput.addEventListener("blur", setName);
-
-msgInput.addEventListener("keyup", e=>{ if(e.key==="Enter") sendMessage(); });
-sendBtn.onclick = sendMessage;
 
 // ---------------- Light/Dark ----------------
 const toggle=document.getElementById("modeToggle");
@@ -344,6 +374,14 @@ class Particle{
 function initParticles(){ particles=[]; for(let i=0;i<80;i++) particles.push(new Particle()); }
 function animate(){ ctx.fillStyle=document.body.classList.contains('light')?"rgba(255,255,255,0.25)":"rgba(16,18,26,0.25)"; ctx.fillRect(0,0,canvas.width,canvas.height); particles.forEach(p=>{p.update();p.draw();}); requestAnimationFrame(animate);}
 initParticles(); animate();
+
+// ---------------- Clear fields on load ----------------
+window.onload = () => {
+    nameInput.value = "";
+    msgInput.value = "";
+    myName = "";
+    updateSendBtn();
+};
 </script>
 
 </body>
